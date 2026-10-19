@@ -1,5 +1,6 @@
 import os
 import asyncio
+import traceback
 import discord
 from discord.ext import commands
 import coc
@@ -17,6 +18,7 @@ async def start_web_server():
     port = int(os.environ.get("PORT", 10000))
     site = web.TCPSite(runner, '0.0.0.0', port)
     await site.start()
+    print(f"Servidor web falso a correr na porta {port}")
 
 # 2. Leitura das Variáveis de Ambiente
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
@@ -35,32 +37,40 @@ async def on_ready():
     print(f'Bot ligado com sucesso como {bot.user}')
 
 async def main():
-    # Garante que existe um event loop ativo para o Python 3.14
     try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-
-    # Inicia o servidor HTTP para o Render
-    await start_web_server()
-
-    # Inicializa e autentica o cliente do Clash of Clans
-    try:
-        coc_client = coc.Client(loop=loop)
-    except TypeError:
-        coc_client = coc.Client()
-
-    if COC_EMAIL and COC_PASSWORD:
+        # Garante que existe um event loop ativo
         try:
-            await coc_client.login(COC_EMAIL, COC_PASSWORD)
-            print("Autenticado na API do Clash of Clans com sucesso!")
-        except Exception as e:
-            print(f"Erro ao ligar à API do CoC: {e}")
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
 
-    # Inicia o Bot do Discord
-    if DISCORD_TOKEN:
-        await bot.start(DISCORD_TOKEN)
+        # Inicia o servidor HTTP para o Render
+        await start_web_server()
+
+        # Inicializa e autentica o cliente do Clash of Clans
+        try:
+            coc_client = coc.Client(loop=loop)
+        except TypeError:
+            coc_client = coc.Client()
+
+        if COC_EMAIL and COC_PASSWORD:
+            try:
+                await coc_client.login(COC_EMAIL, COC_PASSWORD)
+                print("Autenticado na API do Clash of Clans com sucesso!")
+            except Exception as e:
+                print(f"Erro ao ligar à API do CoC: {e}")
+
+        # Inicia o Bot do Discord
+        if DISCORD_TOKEN:
+            print("A iniciar o bot do Discord...")
+            await bot.start(DISCORD_TOKEN)
+        else:
+            print("AVISO: DISCORD_TOKEN não encontrado nas variáveis de ambiente!")
+
+    except Exception as e:
+        print("--- ERRO CRITICO NO MAIN ---")
+        traceback.print_exc()
 
 if __name__ == "__main__":
     asyncio.run(main())
