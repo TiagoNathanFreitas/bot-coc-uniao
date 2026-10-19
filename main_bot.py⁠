@@ -36,6 +36,11 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 async def on_ready():
     print(f'Bot ligado com sucesso como {bot.user}')
 
+# COMANDO DE TESTE (!ping)
+@bot.command()
+async def ping(ctx):
+    await ctx.send("🏓 **Pong! O Bot do Clan União está 100% online e funcional!**")
+
 async def main():
     try:
         # Garante que existe um event loop ativo
@@ -48,14 +53,14 @@ async def main():
         # Inicia o servidor HTTP para o Render
         await start_web_server()
 
-        # Tenta ligar à API do CoC (se falhar, apenas avisa e continua para o Discord)
+        # Tenta ligar à API do CoC (sem derrubar o bot caso falhe)
         try:
             coc_client = coc.Client(loop=loop)
             if COC_EMAIL and COC_PASSWORD:
                 await coc_client.login(COC_EMAIL, COC_PASSWORD)
                 print("Autenticado na API do Clash of Clans com sucesso!")
         except Exception as e:
-            print(f"AVISO: Falha na API do CoC (a continuar sem ela por agora): {e}")
+            print(f"AVISO: Falha na API do CoC: {e}")
 
         # Inicia o Bot do Discord
         if DISCORD_TOKEN:
