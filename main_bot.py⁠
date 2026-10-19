@@ -1,122 +1,98 @@
 import os
-import asyncio
 import discord
 from discord.ext import commands, tasks
 import coc
 
-# Carregar variáveis de ambiente do Render
-DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
-CHANNEL_ID = os.getenv("DISCORD_CHANNEL_ID")
-CLAN_TAG = os.getenv("CLAN_TAG")
-COC_EMAIL = os.getenv("COC_EMAIL")
-COC_PASSWORD = os.getenv("COC_PASSWORD")
+DISCORD_TOKEN = os.getenv('DISCORD_TOKEN')
+COC_EMAIL = os.getenv('COC_EMAIL')
+COC_PASSWORD = os.getenv('COC_PASSWORD')
+CLAN_TAG = os.getenv('CLAN_TAG', '#2YVY088R2')
+DISCORD_CHANNEL_ID = int(os.getenv('DISCORD_CHANNEL_ID', '1380453139207159949'))
 
-# Configurar Intenções do Discord
 intents = discord.Intents.default()
 intents.message_content = True
+bot = commands.Bot(command_prefix='!', intents=intents)
 
-bot = commands.Bot(command_prefix="!", intents=intents)
-
-# Cliente da API do Clash of Clans
-coc_client = coc.login(COC_EMAIL, COC_PASSWORD)
-
-
-async def get_pending_attacks():
-    """Procura os ataques pendentes na guerra atual."""
-    try:
-        war = await coc_client.get_current_war(CLAN_TAG)
-        if not war or war.state != "inWar":
-            return None, "O clã não está atualmente em guerra."
-
-        pending_members = []
-        for member in war.members:
-            # Verifica se o membro ainda tem ataques restantes
-            attacks_used = len(member.attacks)
-            if attacks_used < war.attacks_per_member:
-                remaining = war.attacks_per_member - attacks_used
-                pending_members.append(
-                    {
-                        "name": member.name,
-                        "town_hall": member.town_hall,
-                        "remaining": remaining,
-                    }
-                )
-
-        # Ordenar por nível de Centro de Vila (CV)
-        pending_members.sort(key=lambda x: x["town_hall"], reverse=True)
-        return pending_members, None
-    except Exception as e:
-        return None, f"Erro ao aceder à API do Clash of Clans: {e}"
-
+coc_client = coc.Client()
 
 @bot.event
 async def on_ready():
-    print(f"Bot ligado com sucesso como {bot.user}")
-    check_war_status.start()
+    print(f'Bot ligado com sucesso como: {bot.user}')
+    try:
+        await coc_client.login(COC_EMAIL, COC_PASSWORD)
+        print("Login na API do Clash of Clans efetuado com sucesso!")
+    except Exception as e:
+        print(f"Erro ao ligar à API do CoC: {e}")
+    
+    if not auto_war_check.is_running():
+        auto_war_check.start()
 
+async def get_war_status():
+    try:
+        war = await coc_client.get_current_war(CLAN_TAG)
+        if not war or war.state != "inWar":
+            return "O clã não está atualmente numa guerra ativa.", []
 
-@bot.command(name="guerra")
-async def guerra_status(ctx):
-    """Comando manual para verificar o estado da guerra."""
-    pending, error = await get_pending_attacks()
-    if error:
-        await ctx.send(f"⚠️ {error}")
+        pending_members = []
+        for member in war.members:
+            attacks_used = len(member.attacks)
+            if attacks_used < war.attacks_per_member:
+                attacks_left = war.attacks_per_member - attacks_used
+                pending_members.append((member.name, member.town_hall, attacks_left))
+
+        pending_members.sort(key=lambda x: x[1], reverse=True)
+        return war, pending_members
+    except Exception as e:
+        return f"Erro ao procurar dados da guerra: {e}", []
+
+@bot.command(name='guerra')
+async def guerra(ctx):
+    await ctx.send("🔍 A consultar estado da guerra no Clash of Clans...")
+    result, pending = await get_war_status()
+    
+    if isinstance(result, str):
+        await ctx.send(result)
         return
 
+    msg = f"⚔️ **GUERRA ATIVA: {result.clan.name} vs {result.opponent.name}**\n"
+    msg += f"⏳ **Tempo restante:** {result.time_left}\n\n"
+    
     if not pending:
-        await ctx.send("🎉 Excelente! Todos os ataques da guerra foram realizados.")
-        return
-
-    msg = "**⚔️ Relatório de Ataques Pendentes na Guerra ⚔️**\n\n"
-    for m in pending:
-        msg += f"• **{m['name']}** (CV {m['town_hall']}) - Falta(m) **{m['remaining']}** ataque(s)\n"
+        msg += "🎉 Todos os membros já realizaram todos os ataques!"
+    else:
+        msg += "📋 **Membros com ataques pendentes (ordenados por CV):**\n"
+        for name, th, left in pending:
+            msg += f"• **{name}** (CV {th}) — {left} ataque(s) restante(s)\n"
 
     await ctx.send(msg)
 
-
-@bot.command(name="cobrar")
-async def cobrar_ataques(ctx):
-    """Comando para cobrar os membros que ainda não atacaram."""
-    pending, error = await get_pending_attacks()
-    if error:
-        await ctx.send(f"⚠️ {error}")
+@bot.command(name='cobrar')
+async def cobrar(ctx):
+    result, pending = await get_war_status()
+    
+    if isinstance(result, str) or not pending:
+        await ctx.send("Não há ataques pendentes para cobrar no momento.")
         return
 
-    if not pending:
-        await ctx.send("Nenhum ataque pendente para cobrar!")
-        return
+    msg = "🚨 **ATENÇÃO CLÃ UNIAO - COBRANÇA DE GUERRA** 🚨\n"
+    msg += "Os seguintes membros ainda possuem ataques para realizar:\n\n"
+    for name, th, left in pending:
+        msg += f"⚠️ **{name}** (CV {th}) -> Faltam {left} ataque(s)\n"
+    msg += "\nPor favor, façam os vossos ataques o quanto antes para garantirmos a vitória! ⚔️"
 
-    msg = "📢 **ATENÇÃO CLÃ - COBRANÇA DE GUERRA** 📢\n"
-    msg += "Os seguintes membros ainda possuem ataques pendentes na guerra:\n\n"
-    for m in pending:
-        msg += f"🚨 **{m['name']}** (CV {m['town_hall']}) -> Restam **{m['remaining']}** ataque(s)!\n"
-
-    msg += "\nPor favor, realizem os vossos ataques o mais rápido possível!"
     await ctx.send(msg)
-
 
 @tasks.loop(hours=4)
-async def check_war_status():
-    """Tarefa automática para enviar avisos no canal do Discord."""
-    if not CHANNEL_ID:
-        return
-
-    channel = bot.get_channel(int(CHANNEL_ID))
+async def auto_war_check():
+    channel = bot.get_channel(DISCORD_CHANNEL_ID)
     if not channel:
         return
 
-    pending, error = await get_pending_attacks()
-    if error or not pending:
-        return
+    result, pending = await get_war_status()
+    if not isinstance(result, str) and pending:
+        msg = "📢 **LEMBRETE AUTOMÁTICO DE GUERRA**\n"
+        msg += f"Restam ataques pendentes na guerra atual. Faltam {len(pending)} membro(s) atacar!"
+        await channel.send(msg)
 
-    msg = "🔔 **Lembrete Automático de Guerra** 🔔\n"
-    msg += "Ainda existem membros com ataques pendentes:\n"
-    for m in pending:
-        msg += f"• **{m['name']}** (CV {m['town_hall']}) - {m['remaining']} ataque(s) restante(s)\n"
-
-    await channel.send(msg)
-
-
-# Iniciar o Bot
-if __name__ == "__main__":
+if __name__ == '__main__':
     bot.run(DISCORD_TOKEN)
