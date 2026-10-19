@@ -48,25 +48,21 @@ async def main():
         # Inicia o servidor HTTP para o Render
         await start_web_server()
 
-        # Inicializa e autentica o cliente do Clash of Clans
+        # Tenta ligar à API do CoC (se falhar, apenas avisa e continua para o Discord)
         try:
             coc_client = coc.Client(loop=loop)
-        except TypeError:
-            coc_client = coc.Client()
-
-        if COC_EMAIL and COC_PASSWORD:
-            try:
+            if COC_EMAIL and COC_PASSWORD:
                 await coc_client.login(COC_EMAIL, COC_PASSWORD)
                 print("Autenticado na API do Clash of Clans com sucesso!")
-            except Exception as e:
-                print(f"Erro ao ligar à API do CoC: {e}")
+        except Exception as e:
+            print(f"AVISO: Falha na API do CoC (a continuar sem ela por agora): {e}")
 
         # Inicia o Bot do Discord
         if DISCORD_TOKEN:
             print("A iniciar o bot do Discord...")
             await bot.start(DISCORD_TOKEN)
         else:
-            print("AVISO: DISCORD_TOKEN não encontrado nas variáveis de ambiente!")
+            print("ERRO: DISCORD_TOKEN não encontrado nas variáveis de ambiente!")
 
     except Exception as e:
         print("--- ERRO CRITICO NO MAIN ---")
