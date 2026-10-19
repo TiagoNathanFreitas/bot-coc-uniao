@@ -5,7 +5,7 @@ from discord.ext import commands
 import coc
 from aiohttp import web
 
-# 1. Servidor Web Falso para o Render (Plano Free)
+# 1. Servidor Web Falso para manter o Render Free ativo
 async def handle(request):
     return web.Response(text="Bot do Clash de Clans ativo!")
 
@@ -18,7 +18,7 @@ async def start_web_server():
     site = web.TCPSite(runner, '0.0.0.0', port)
     await site.start()
 
-# 2. Variáveis de Ambiente
+# 2. Leitura das Variáveis de Ambiente
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 CHANNEL_ID = os.getenv("DISCORD_CHANNEL_ID")
 CLAN_TAG = os.getenv("CLAN_TAG")
@@ -30,18 +30,27 @@ intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# Cliente da API do Clash of Clans
-coc_client = coc.Client()
-
 @bot.event
 async def on_ready():
     print(f'Bot ligado com sucesso como {bot.user}')
 
 async def main():
-    # Inicia o servidor HTTP para manter o Render ativo
+    # Garante que existe um event loop ativo para o Python 3.14
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+    # Inicia o servidor HTTP para o Render
     await start_web_server()
 
-    # Login na API do Clash of Clans
+    # Inicializa e autentica o cliente do Clash of Clans
+    try:
+        coc_client = coc.Client(loop=loop)
+    except TypeError:
+        coc_client = coc.Client()
+
     if COC_EMAIL and COC_PASSWORD:
         try:
             await coc_client.login(COC_EMAIL, COC_PASSWORD)
